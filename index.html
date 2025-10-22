@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Push Notificações</title>
+    <meta name="author" content="Onivaldo Miquelino">      
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: ui-sans-serif, system-ui; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-lg">
+        <h1 class="text-3xl font-bold text-center text-indigo-700 mb-6">Teste de Web Push Notifications</h1>
+        
+        <div id="statusComponent" class="mb-6 p-3 rounded-lg text-center">
+            <p id="statusMessage" class="font-medium text-gray-700">Aguardando registro do Service Worker...</p>
+        </div>
+
+        <div class="space-y-4">
+            <div>
+                <label for="notificationInput" class="block text-sm font-medium text-gray-700">
+                    Mensagem da Notificação
+                </label>
+                <input type="text" id="notificationInput" class="mt-1 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 p-2 border" placeholder="Ex: Sua encomenda chegou!" value="Notificação de Teste" required>
+            </div>
+        </div>
+
+        <div class="mt-6 flex flex-col space-y-4">
+            <button id="sendJsBtn" class="w-full py-3 px-4 rounded-md shadow-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out">
+                Enviar Notificação (Frontend - JS)
+            </button>
+            <button id="sendPhpBtn" class="w-full py-3 px-4 rounded-md shadow-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out">
+                Enviar Notificação (Backend - PHP Push)
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ******************************************************************************
+        // ATENÇÃO: Mude esta URL para o caminho correto do seu arquivo api.php no servidor
+        // Ex: http://localhost:8001/api.php
+        // ******************************************************************************
+        const API_URL = 'http://localhost:8001/api.php'; 
+        const VAPID_PUBLIC_KEY = 'SUA_CHAVE_PUBLICA_VAPID_AQUI'; // Usar a mesma chave do PHP!
+
+        const statusComponent = document.getElementById('statusComponent');
+        const statusMessage = document.getElementById('statusMessage');
+        const notificationInput = document.getElementById('notificationInput');
+        const sendJsBtn = document.getElementById('sendJsBtn');
+        const sendPhpBtn = document.getElementById('sendPhpBtn');
+        let currentSubscription = null; // Armazena o objeto de subscrição
+
+        // Função para converter VAPID key de Base64 URL Safe para ArrayBuffer
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding)
+                .replace(/\-/g, '+')
+                .replace(/_/g, '/');
+
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        // --- Funções de Status ---
+
+        function updateStatus(message, bgColor, textColor) {
+            statusMessage.textContent = message;
+            statusComponent.className = `mb-6 p-3 rounded-lg text-center ${bgColor} ${textColor}`;
+        }
+        
+        // --- Funções de Subscrição ---
+
+        async function registerServiceWorker() {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                updateStatus('🚫 Push não suportado neste navegador.', 'bg-red-200', 'text-red-800');
+                return false;
+            }
+
+            try {
+                const registration = await navigator.serviceWorker.register('service-worker.js');
+                updateStatus('✅ Service Worker registrado.', 'bg-yellow-100', 'text-yellow-700');
+                return registration;
+            } catch (error) {
+                updateStatus(`❌ Erro ao registrar SW: ${error.message}`, 'bg-red-200', 'text-red-800');
+                return false;
+            }
+        }
+
+        async function subscribeUser(registration) {
+            const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+            
+            try {
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: applicationServerKey
+                });
+                
+                currentSubscription = subscription;
+                updateStatus('✅ Usuário inscrito com sucesso.', 'bg-green-200', 'text-green-800');
+                
+                // Enviar a subscrição para o backend PHP
+                await saveSubscriptionToBackend(subscription.toJSON());
+                
+            } catch (error) {
+                if (Notification.permission === 'denied') {
+                    updateStatus('❌ Permissão de notificação negada pelo usuário.', 'bg-red-200', 'text-red-800');
+                } else {
+                    updateStatus(`❌ Falha na subscrição: ${error.message}`, 'bg-red-200', 'text-red-800');
+                }
+            }
+        }
+
+        // --- Comunicação com Backend ---
+
+        async function saveSubscriptionToBackend(subscription) {
+            updateStatus('💾 Salvando subscrição no backend...', 'bg-indigo-100', 'text-indigo-700');
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'subscribe', subscription: subscription })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    updateStatus('✅ Subscrição salva no backend (Pronto para PHP Push).', 'bg-green-200', 'text-green-800');
+                } else {
+                    updateStatus(`⚠️ Erro ao salvar subscrição no backend: ${result.error}`, 'bg-orange-200', 'text-orange-800');
+                }
+            } catch (error) {
+                updateStatus(`❌ Erro de comunicação com a API: ${error.message}`, 'bg-red-200', 'text-red-800');
+            }
+        }
+
+        // --- Ações de Notificação ---
+
+        // 1. Enviar via JavaScript (Notificação local, não é push)
+        sendJsBtn.addEventListener('click', () => {
+            const message = notificationInput.value || 'Notificação JS Local';
+
+            if (Notification.permission === 'granted') {
+                new Notification('Notificação Local (JS)', {
+                    body: message,
+                    icon: 'push-icon.png'
+                });
+                updateStatus('🔔 Notificação JS enviada com sucesso (local).', 'bg-blue-100', 'text-blue-800');
+            } else {
+                updateStatus('❌ Permissão de notificação necessária para o modo JS.', 'bg-red-200', 'text-red-800');
+            }
+        });
+
+        // 2. Enviar via PHP (Web Push)
+        sendPhpBtn.addEventListener('click', async () => {
+            if (!currentSubscription) {
+                updateStatus('❌ Por favor, inscreva-se primeiro.', 'bg-red-200', 'text-red-800');
+                return;
+            }
+
+            updateStatus('📤 Enviando Web Push via PHP...', 'bg-green-100', 'text-green-700');
+
+            try {
+                const message = notificationInput.value || 'Notificação PHP Web Push';
+                
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'send_php', payload: message })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    updateStatus(`✅ Sucesso! Mensagem do PHP: ${result.message}`, 'bg-green-200', 'text-green-800');
+                } else {
+                    updateStatus(`❌ Falha no PHP Push: ${result.error}`, 'bg-red-200', 'text-red-800');
+                }
+            } catch (error) {
+                updateStatus(`❌ Erro de comunicação com a API: ${error.message}`, 'bg-red-200', 'text-red-800');
+            }
+        });
+
+        // --- Inicialização ---
+
+        window.addEventListener('load', async () => {
+            const registration = await registerServiceWorker();
+            if (registration) {
+                // Verificar e/ou pedir permissão
+                if (Notification.permission === 'granted') {
+                    const existingSubscription = await registration.pushManager.getSubscription();
+                    if (existingSubscription) {
+                        currentSubscription = existingSubscription;
+                        updateStatus('✅ Já inscrito e com permissão.', 'bg-green-200', 'text-green-800');
+                        await saveSubscriptionToBackend(existingSubscription.toJSON()); // Garantir que está no backend
+                    } else {
+                        subscribeUser(registration);
+                    }
+                } else if (Notification.permission === 'default') {
+                    updateStatus('⚠️ Clique para permitir notificações...', 'bg-yellow-100', 'text-yellow-700');
+                    // Tenta se inscrever (o navegador pedirá permissão)
+                    subscribeUser(registration);
+                } else {
+                     updateStatus('🚫 Notificações bloqueadas. Permita nas configurações do navegador.', 'bg-red-200', 'text-red-800');
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>
