@@ -95,7 +95,7 @@ cd .. # Voltar para a raiz do projeto
 ​4. Executar o Servidor
 ​Para testes rápidos, você pode usar o servidor embutido do PHP:
 
-# Execute na raiz do projeto
+Execute na raiz do projeto
 ```bash
 php -S localhost:8001
 ```
