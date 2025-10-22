@@ -125,7 +125,7 @@ const API_URL = 'http://localhost:8001/api.php';
 ​O frontend envia uma requisição ao api.php.
 ​O api.php usa sua chave privada VAPID para assinar a mensagem e envia o push para o provedor (ex: FCM do Google).
 ​O provedor envia a notificação para o Service Worker do seu navegador, que a exibe. Esta notificação funciona mesmo com o navegador minimizado!
-​
+​<br>
 🛑 Notas de Segurança e Produção
 ​Chaves VAPID: Em produção, NUNCA exponha a VAPID_PRIVATE_KEY em nenhum lugar do código frontend ou arquivos públicos. Ela deve ser usada apenas no backend.
 ​Armazenamento de Subscrição: O método de salvar a subscrição em um arquivo (subscription.json) é apenas para demonstração. Em produção, use um banco de dados para armazenar as subscrições de forma persistente.
